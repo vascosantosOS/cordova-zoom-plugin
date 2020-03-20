@@ -52,7 +52,7 @@ import cordova.plugin.zoom.AuthThread;
  */
 public class Zoom extends CordovaPlugin implements ZoomSDKAuthenticationListener, MeetingServiceListener {
     /* Debug variables */
-    private static final String TAG = "<------- ZoomCordovaPlugin ---------->";
+    private static final String TAG = "^^^ZoomCordovaPlugin^^^";
     private static final boolean DEBUG = false;
     public static final Object LOCK = new Object();
 
@@ -702,13 +702,14 @@ public class Zoom extends CordovaPlugin implements ZoomSDKAuthenticationListener
                         Log.v(TAG, "[#############setLocale Thread run()##############]");
                     }
                     ZoomSDK zoomSDK = ZoomSDK.getInstance();
-                    try {
-                        Locale langugage = new Builder().setLanguageTag(languageTag.replaceAll("_","-")).build();
-                        zoomSDK.setSdkLocale(cordova.getActivity().getApplicationContext(), langugage);
-                        callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, "Successfully set language to " + languageTag));
-                    } catch (IllformedLocaleException ie) {
+                    //try {
+                    Locale language = new Locale(languageTag.replaceAll("_","-"));
+                    //Locale language = new Builder().setLanguageTag(languageTag.replaceAll("_","-")).build();
+                    zoomSDK.setSdkLocale(cordova.getActivity().getApplicationContext(), language);
+                    callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, "Successfully set language to " + languageTag));
+                    /*} catch (IllformedLocaleException ie) {
                         callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.ERROR, "Please pass valid language and country codes. [ERROR:" + ie.getMessage() + "]"));
-                    }
+                    }*/
                 }
             });
         } catch (Exception e) {
@@ -855,6 +856,13 @@ public class Zoom extends CordovaPlugin implements ZoomSDKAuthenticationListener
      */
     @Override
     public void onZoomIdentityExpired() {
+        if (mZoomSDK.isLoggedIn()) {
+            mZoomSDK.logoutZoom();
+        }
+    }
+
+    @Override
+    public void onZoomAuthIdentityExpired() {
         if (mZoomSDK.isLoggedIn()) {
             mZoomSDK.logoutZoom();
         }

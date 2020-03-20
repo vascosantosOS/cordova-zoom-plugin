@@ -32,7 +32,7 @@ import us.zoom.sdk.ZoomSDKInitializeListener;
  */
 public class AuthThread implements Callable<Boolean>, ZoomSDKInitializeListener {
     /* Debug variables */
-    private static final String TAG = "^^^^^^^^^^AuthThread^^^^^^^^^^^";
+    private static final String TAG = "^^^^^^AuthThread^^^^^^^";
     private static final boolean DEBUG = false;
     public static Object LOCK;
 
@@ -187,6 +187,13 @@ public class AuthThread implements Callable<Boolean>, ZoomSDKInitializeListener 
                 // Notify the lock to release block.
                 LOCK.notify();
             }
+        }
+    }
+
+    @Override
+    public void onZoomAuthIdentityExpired() {
+        if (mZoomSDK.isLoggedIn()) {
+            mZoomSDK.logoutZoom();
         }
     }
 
