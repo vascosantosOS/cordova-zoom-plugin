@@ -861,13 +861,6 @@ public class Zoom extends CordovaPlugin implements ZoomSDKAuthenticationListener
         }
     }
 
-    @Override
-    public void onZoomAuthIdentityExpired() {
-        if (mZoomSDK.isLoggedIn()) {
-            mZoomSDK.logoutZoom();
-        }
-    }
-
     /**
      * onMeetingStatusChanged
      *

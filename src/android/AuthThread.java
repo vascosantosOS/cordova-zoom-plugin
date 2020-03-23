@@ -190,12 +190,6 @@ public class AuthThread implements Callable<Boolean>, ZoomSDKInitializeListener 
         }
     }
 
-    @Override
-    public void onZoomAuthIdentityExpired() {
-        if (mZoomSDK.isLoggedIn()) {
-            mZoomSDK.logoutZoom();
-        }
-    }
 
     /**
      * getInitErrorMessage
