@@ -11,8 +11,8 @@ function callNativeFunction(name, args, success, error) {
 
 var zoom = {
 
-    initialize: function(appKey, appSecret, success, error) {
-        callNativeFunction('initialize', [appKey, appSecret], success, error);
+    initialize: function(appKey, appSecret,apiKey,apiSecret, success, error) {
+        callNativeFunction('initialize', [appKey, appSecret,apiKey,apiSecret], success, error);
     },
 
     login: function(username, password, success, error) {
@@ -31,12 +31,12 @@ var zoom = {
          callNativeFunction('joinMeeting', [meetingNo, meetingPassword, displayName, options], success, error);
     },
 
-    startMeetingWithZAK: function(meetingNo, displayName, zoomToken, zoomAccessToken, userId, options, success, error) {
-        callNativeFunction('startMeeting', [meetingNo, displayName, zoomToken, zoomAccessToken, userId, options], success, error);
+    startMeetingWithZAK: function(meetingNo, displayName, userId, options, success, error) {
+        callNativeFunction('startMeeting', [meetingNo, displayName, userId, options], success, error);
     },
 
     startMeeting: function(meetingNo, options, success, error) {
-        callNativeFunction('startMeeting', [meetingNo, "", "", "", "", options], success, error);
+        callNativeFunction('startMeeting', [meetingNo, "", "", options], success, error);
     },
 
     startInstantMeeting: function(options, success, error) {
@@ -45,6 +45,10 @@ var zoom = {
 
     setLocale: function(languageTag, success, error) {
         callNativeFunction('setLocale', [languageTag], success, error);
+    },
+
+    getUsersId:function(success,error){
+        callNativeFunction('getUsersId',[],success,error);
     }
 
 };
