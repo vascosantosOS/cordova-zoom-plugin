@@ -1,5 +1,15 @@
 package cordova.plugin.zoom;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 import java.util.Locale.Builder;
 import java.util.IllformedLocaleException;
@@ -14,6 +24,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import android.util.Base64;
 import android.util.Log;
 import android.view.Gravity;
 import android.widget.Toast;
@@ -21,6 +32,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import javax.net.ssl.HttpsURLConnection;
 
 import us.zoom.sdk.ZoomSDK;
 import us.zoom.sdk.ZoomSDKAuthenticationListener;
@@ -52,7 +67,7 @@ import cordova.plugin.zoom.AuthThread;
  */
 public class Zoom extends CordovaPlugin implements ZoomSDKAuthenticationListener, MeetingServiceListener {
     /* Debug variables */
-    private static final String TAG = "<------- ZoomCordovaPlugin ---------->";
+    private static final String TAG = "^^^ZoomCordovaPlugin^^^";
     private static final boolean DEBUG = false;
     public static final Object LOCK = new Object();
 
@@ -60,6 +75,8 @@ public class Zoom extends CordovaPlugin implements ZoomSDKAuthenticationListener
 
     private ZoomSDK mZoomSDK;
     private CallbackContext callbackContext;
+    private String API_KEY;
+    private String API_SECRET;
 
     /**
      * execute
@@ -88,7 +105,9 @@ public class Zoom extends CordovaPlugin implements ZoomSDKAuthenticationListener
             case "initialize":
                 String appKey = args.getString(0);
                 String appSecret = args.getString(1);
-                this.initialize(appKey, appSecret, callbackContext);
+                String apiKey = args.getString(2);
+                String apiSecret = args.getString(3);
+                this.initialize(appKey, appSecret,apiKey, apiSecret, callbackContext);
                 break;
             case "login":
                 String username = args.getString(0);
@@ -114,12 +133,9 @@ public class Zoom extends CordovaPlugin implements ZoomSDKAuthenticationListener
             case "startMeeting":
                 String meetingNum = args.getString(0);
                 String displayNameS = args.getString(1);
-                String zoomToken = args.getString(2);
-                String zoomAccessToken = args.getString(3);
-                String userId = args.getString(4);
-                JSONObject optionsS = args.getJSONObject(5);
-                this.startMeeting(meetingNum, displayNameS, zoomToken,
-                        zoomAccessToken, userId, optionsS, callbackContext);
+                String userId = args.getString(2);
+                JSONObject optionsS = args.getJSONObject(3);
+                this.startMeeting(meetingNum, displayNameS, userId, optionsS, callbackContext);
                 break;
             case "startInstantMeeting":
                 JSONObject optionsI = args.getJSONObject(0);
@@ -128,6 +144,19 @@ public class Zoom extends CordovaPlugin implements ZoomSDKAuthenticationListener
             case "setLocale":
                 String languageTag = args.getString(0);
                 this.setLocale(languageTag, callbackContext);
+                break;
+            case "getUsersId":
+                String jwtAccessToken = getJWT(3600);//1h
+                JSONArray users = this.getUsersId(jwtAccessToken);
+                JSONArray finalUsers = new JSONArray();
+                for (int i = 0; i<users.length();i++){
+                    JSONObject user = users.getJSONObject(i);
+                    JSONObject finalUser = new JSONObject();
+                    finalUser.put("id",user.get("id"));
+                    finalUser.put("email",user.get("email"));
+                    finalUsers.put(finalUser);
+                }
+                callbackContext.success(finalUsers);
                 break;
             default:
                 return false;
@@ -142,19 +171,25 @@ public class Zoom extends CordovaPlugin implements ZoomSDKAuthenticationListener
      *
      * @param appKey        Zoom SDK app key.
      * @param appSecret     Zoom SDK app secret.
+     * @param apiKey        Zoom Web api key.
+     * @param apiSecret     Zoom Web api secret.
      * @param callbackContext Cordova callback context.
      */
-    private void initialize(String appKey, String appSecret, CallbackContext callbackContext) {
+    private void initialize(String appKey, String appSecret,String apiKey,String apiSecret, CallbackContext callbackContext) {
         if (DEBUG) {
             Log.v(TAG, "********** Zoom's initialize called **********");
             Log.v(TAG, "appKey length = " + appKey.length());
             Log.v(TAG, "appSecret length= " + appSecret.length());
+            Log.v(TAG, "appKey length = " + apiKey.length());
+            Log.v(TAG, "appSecret length= " + apiSecret.length());
         }
 
         // Note: When "null" is pass from JS to Android, it is transferred as a word "null".
         if (appKey == null || appKey.trim().isEmpty() || appKey.equals("null")
-                || appSecret == null || appSecret.trim().isEmpty() || appSecret.equals("null")) {
-            callbackContext.error("Both SDK key and secret cannot be empty");
+                || appSecret == null || appSecret.trim().isEmpty() || appSecret.equals("null")
+                || apiKey == null || apiKey.trim().isEmpty() || apiKey.equals("null")
+                || apiSecret == null || apiSecret.trim().isEmpty() || apiSecret.equals("null")) {
+            callbackContext.error("Both SDK and Api key and secret cannot be empty");
             return;
         }
 
@@ -189,6 +224,9 @@ public class Zoom extends CordovaPlugin implements ZoomSDKAuthenticationListener
                     }
                 }
             }
+
+            API_KEY = apiKey;
+            API_SECRET = apiSecret;
 
             callbackContext.success("Initialize successfully!");
         } catch (Exception e) {
@@ -460,13 +498,11 @@ public class Zoom extends CordovaPlugin implements ZoomSDKAuthenticationListener
      *
      * @param meetingNo         meeting number
      * @param displayName       display name shown in meeting
-     * @param zoomToken         zoom token retrieved from Zoom REST API
-     * @param zoomAccessToken   zoom access token retrieved from Zoom REST API
      * @param userId            userId retrieved from Zoom REST API
      * @param option            meeting option
      * @param callbackContext   cordova callback context
      */
-    private void startMeeting(String meetingNo, String displayName, String zoomToken, String zoomAccessToken, String userId, JSONObject option, CallbackContext callbackContext) {
+    private void startMeeting(String meetingNo, String displayName, String userId, JSONObject option, CallbackContext callbackContext) {
 
         if (meetingNo == null || meetingNo.trim().isEmpty() || meetingNo.equals("null")) {
             callbackContext.error("Meeting number cannot be empty");
@@ -582,36 +618,129 @@ public class Zoom extends CordovaPlugin implements ZoomSDKAuthenticationListener
                 Log.v(TAG, "[+++++++++++++++Going to start meeting with ZAK++++++++++++++++]");
                 Log.v(TAG, "[userId==="+userId);
             }
-            if (zoomToken.length() != 0 && zoomAccessToken.length() != 0 && userId.length() != 0) {
+            if (userId.length() != 0) {
                 StartMeetingParamsWithoutLogin params = new StartMeetingParamsWithoutLogin();
-                params.userId = userId;
-                params.zoomToken = zoomToken;
-                params.userType = MeetingService.USER_TYPE_API_USER;
-                params.displayName = displayName;
-                params.zoomAccessToken = zoomAccessToken;
-                params.meetingNo = meetingNumber;
+                String jwtAccessToken = getJWT(3600);//1h
+                String zoomAccessToken = getToken(userId,"zak",jwtAccessToken);
+                String zoomToken = getToken(userId,"token",jwtAccessToken);
+                if(zoomToken.length() != 0 && zoomAccessToken.length() != 0) {
+                    params.userId = userId;
+                    params.zoomToken = zoomToken;
+                    params.userType = MeetingService.USER_TYPE_API_USER;
+                    params.displayName = displayName;
+                    params.zoomAccessToken = zoomAccessToken;
+                    params.meetingNo = meetingNumber;
 
-                cordova.getThreadPool().execute(new Runnable() {
-                    @Override
-                    public void run() {
-                        int response = meetingService.startMeetingWithParams(cordova.getActivity().getApplicationContext(), params, opts);
-                        PluginResult pluginResult = null;
-                        if (response != MeetingError.MEETING_ERROR_SUCCESS) {
-                            pluginResult =  new PluginResult(PluginResult.Status.ERROR, getMeetingErrorMessage(response));
-                            pluginResult.setKeepCallback(true);
-                            callbackContext.sendPluginResult(pluginResult);
-                        } else {
-                            pluginResult =  new PluginResult(PluginResult.Status.OK, getMeetingErrorMessage(response));
-                            pluginResult.setKeepCallback(true);
-                            callbackContext.sendPluginResult(pluginResult);
+                    cordova.getThreadPool().execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            int response = meetingService.startMeetingWithParams(cordova.getActivity().getApplicationContext(), params, opts);
+                            PluginResult pluginResult = null;
+                            if (response != MeetingError.MEETING_ERROR_SUCCESS) {
+                                pluginResult = new PluginResult(PluginResult.Status.ERROR, getMeetingErrorMessage(response));
+                                pluginResult.setKeepCallback(true);
+                                callbackContext.sendPluginResult(pluginResult);
+                            } else {
+                                pluginResult = new PluginResult(PluginResult.Status.OK, getMeetingErrorMessage(response));
+                                pluginResult.setKeepCallback(true);
+                                callbackContext.sendPluginResult(pluginResult);
+                            }
                         }
-                    }
-                });
+                    });
+                }else {
+                    pluginResult =  new PluginResult(PluginResult.Status.ERROR, "Could not retrieve zoom token, zoom access token for given userId!");
+                    pluginResult.setKeepCallback(true);
+                    callbackContext.sendPluginResult(pluginResult);
+                }
             } else {
-                pluginResult =  new PluginResult(PluginResult.Status.ERROR, "Your zoom token, zoom access token, and userId are not valid");
+                pluginResult =  new PluginResult(PluginResult.Status.ERROR, "Your userId is not valid");
                 pluginResult.setKeepCallback(true);
                 callbackContext.sendPluginResult(pluginResult);
             }
+        }
+    }
+
+    private String getJWT(long EXPIRED_TIME){
+        long time = System.currentTimeMillis()/1000  + EXPIRED_TIME;
+
+        String header = "{\"alg\": \"HS256\", \"typ\": \"JWT\"}";
+        String payload = "{\"iss\": \"" + API_KEY + "\"" + ", \"exp\": " + String.valueOf(time) + "}";
+        try {
+            String headerBase64Str = Base64.encodeToString(header.getBytes("utf-8"), Base64.NO_WRAP| Base64.NO_PADDING | Base64.URL_SAFE);
+            String payloadBase64Str = Base64.encodeToString(payload.getBytes("utf-8"), Base64.NO_WRAP| Base64.NO_PADDING | Base64.URL_SAFE);
+            final Mac mac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKeySpec = new SecretKeySpec(API_SECRET.getBytes(), "HmacSHA256");
+            mac.init(secretKeySpec);
+
+            byte[] digest = mac.doFinal((headerBase64Str + "." + payloadBase64Str).getBytes());
+
+            return headerBase64Str + "." + payloadBase64Str + "." + Base64.encodeToString(digest, Base64.NO_WRAP| Base64.NO_PADDING | Base64.URL_SAFE);
+        } catch (NoSuchAlgorithmException | UnsupportedEncodingException | InvalidKeyException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+    private JSONArray getUsersId(String jwtAccessToken){
+        try {
+            URL zoomTokenEndpoint = new URL("https://api.zoom.us/v2/users/");
+
+            HttpsURLConnection connection = (HttpsURLConnection) zoomTokenEndpoint.openConnection();
+            String basicAuth = "Bearer " + jwtAccessToken;
+
+            connection.setRequestProperty ("Authorization", basicAuth);
+            //connection.setRequestProperty("Content-Type", " application/json");
+            if (connection.getResponseCode() == HttpURLConnection.HTTP_OK) {
+                InputStream responseBody = connection.getInputStream();
+                InputStreamReader responseBodyReader = new InputStreamReader(responseBody, "UTF-8");
+                BufferedReader streamReader = new BufferedReader(responseBodyReader);
+                StringBuilder responseStrBuilder = new StringBuilder();
+
+                //get JSON String
+                String inputStr;
+                while ((inputStr = streamReader.readLine()) != null)
+                    responseStrBuilder.append(inputStr);
+
+                connection.disconnect();
+                JSONObject jsonObject = new JSONObject(responseStrBuilder.toString());
+                return jsonObject.getJSONArray("users");
+            } else {
+                Log.d(TAG, "error in connection");
+                return null;
+            }
+        } catch (IOException | JSONException e){
+            return null;
+        }
+    }
+
+    private String getToken(String userId,String type,String jwtAccessToken){
+        try {
+        //type = token or zak
+        URL zoomTokenEndpoint = new URL("https://api.zoom.us/v2/users/" + userId + "/token?type="+type+"&access_token=" + jwtAccessToken);
+        HttpsURLConnection connection = (HttpsURLConnection) zoomTokenEndpoint.openConnection();
+            String basicAuth = "Bearer " + jwtAccessToken;
+
+            connection.setRequestProperty ("Authorization", basicAuth);
+        //connection.setRequestProperty("Content-Type", " application/json");
+        if (connection.getResponseCode() == HttpURLConnection.HTTP_OK) {
+            InputStream responseBody = connection.getInputStream();
+            InputStreamReader responseBodyReader = new InputStreamReader(responseBody, "UTF-8");
+            BufferedReader streamReader = new BufferedReader(responseBodyReader);
+            StringBuilder responseStrBuilder = new StringBuilder();
+
+            //get JSON String
+            String inputStr;
+            while ((inputStr = streamReader.readLine()) != null)
+                responseStrBuilder.append(inputStr);
+
+            connection.disconnect();
+            JSONObject jsonObject = new JSONObject(responseStrBuilder.toString());
+            return jsonObject.getString("token");
+        } else {
+            Log.d(TAG, "error in connection");
+            return null;
+        }
+        } catch (IOException | JSONException e){
+            return null;
         }
     }
 
@@ -702,13 +831,14 @@ public class Zoom extends CordovaPlugin implements ZoomSDKAuthenticationListener
                         Log.v(TAG, "[#############setLocale Thread run()##############]");
                     }
                     ZoomSDK zoomSDK = ZoomSDK.getInstance();
-                    try {
-                        Locale langugage = new Builder().setLanguageTag(languageTag.replaceAll("_","-")).build();
-                        zoomSDK.setSdkLocale(cordova.getActivity().getApplicationContext(), langugage);
-                        callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, "Successfully set language to " + languageTag));
-                    } catch (IllformedLocaleException ie) {
+                    //try {
+                    Locale language = new Locale(languageTag.replaceAll("_","-"));
+                    //Locale language = new Builder().setLanguageTag(languageTag.replaceAll("_","-")).build();
+                    zoomSDK.setSdkLocale(cordova.getActivity().getApplicationContext(), language);
+                    callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.OK, "Successfully set language to " + languageTag));
+                    /*} catch (IllformedLocaleException ie) {
                         callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.ERROR, "Please pass valid language and country codes. [ERROR:" + ie.getMessage() + "]"));
-                    }
+                    }*/
                 }
             });
         } catch (Exception e) {
