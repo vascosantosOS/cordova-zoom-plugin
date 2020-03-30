@@ -7,6 +7,8 @@
 
 #import <Cordova/CDV.h>
 #import <MobileRTC/MobileRTC.h>
+#include <CommonCrypto/CommonDigest.h>
+#include <CommonCrypto/CommonHMAC.h>
 /**
  *  Zoom
  *
@@ -14,6 +16,8 @@
  */
 @interface Zoom :  CDVPlugin<MobileRTCAuthDelegate, MobileRTCMeetingServiceDelegate> {
     NSString *callbackId;
+    NSString *apiKey;
+    NSString *apiSecret;
     CDVPluginResult* pluginResult;
 }
 /**
@@ -65,6 +69,13 @@
  * @param CDVInvokedUrlCommand bridging method to get arguments, callbackId, className and methodName.
  */
 - (void)startInstantMeeting:(CDVInvokedUrlCommand*)command;
+/**
+ * getUsersId
+ *
+ * gets all the users id in the zoom database
+ * @param CDVInvokedUrlCommand bridging method to get arguments, callbackId, className and methodName.
+ */
+- (void)getUsersId:(CDVInvokedUrlCommand*)command;
 /**
  * setLocale
  *

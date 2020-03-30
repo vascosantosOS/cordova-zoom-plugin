@@ -19,6 +19,9 @@
     // Get variables.
     NSString* appKey = [command.arguments objectAtIndex:0];
     NSString* appSecret = [command.arguments objectAtIndex:1];
+    
+    apiKey = [command.arguments objectAtIndex:2];
+    apiSecret = [command.arguments objectAtIndex:3];
 
     // Run authentication and initialize SDK on main thread.
     dispatch_async(dispatch_get_main_queue(), ^(void){
@@ -151,9 +154,7 @@
     // Get variables.
     NSString* meetingNo = [command.arguments objectAtIndex:0];
     NSString* displayName = [command.arguments objectAtIndex:1];
-    NSString* zoomToken = [command.arguments objectAtIndex:2];
-    NSString* zoomAccessToken = [command.arguments objectAtIndex:3];
-    NSString* userId = [command.arguments objectAtIndex:4];
+    NSString* userId = [command.arguments objectAtIndex:2];
 
     dispatch_async(dispatch_get_main_queue(), ^(void) {
 
@@ -184,27 +185,42 @@
             }
             else
             {
-                // Is user is not logged in.
-                NSLog(@"Start meeting without logged in.");
-                NSLog(@"zoom token: %@",zoomToken);
-                NSLog(@"zak: %@",zoomAccessToken);
-                if (zoomToken == nil || ![zoomToken isKindOfClass:[NSString class]] || [zoomToken length] == 0 ||
-                    zoomAccessToken == nil || ![zoomAccessToken isKindOfClass:[NSString class]] || [zoomAccessToken length] == 0 ||
-                    userId == nil || ![userId isKindOfClass:[NSString class]] || [userId length] == 0) {
-                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Your zoom token, zoom access token, and userId are not valid"];
+
+                NSString* zoomToken;
+                NSString* zoomAccessToken;
+                if (userId != nil && [userId isKindOfClass:[NSString class]] && [userId length] != 0) {
+                    zoomToken = [self requestTokenOrZAKForUser:userId withType:@"token"];
+                    zoomAccessToken = [self requestTokenOrZAKForUser:userId withType:@"zak"];
+                    if (zoomToken == nil) {
+                        zoomToken = zoomAccessToken;
+                    }
+                    // Is user is not logged in.
+                    NSLog(@"Start meeting without logged in.");
+                    NSLog(@"zoom token: %@",zoomToken);
+                    NSLog(@"zak: %@",zoomAccessToken);
+                    if (zoomToken == nil || ![zoomToken isKindOfClass:[NSString class]] || [zoomToken length] == 0 ||
+                        zoomAccessToken == nil || ![zoomAccessToken isKindOfClass:[NSString class]] || [zoomAccessToken length] == 0) {
+                        pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Could not retrieve zoomToken and zoomAccessToken from zoom api - Possible causes 'ApiKey' 'ApiSecret' or 'userId'."];
+                        [self.commandDelegate sendPluginResult:pluginResult callbackId:callbackId];
+                        return;
+                    }
+
+                    MobileRTCMeetingStartParam4WithoutLoginUser * user = [[MobileRTCMeetingStartParam4WithoutLoginUser alloc]init];
+                    user.userType = MobileRTCUserType_APIUser;
+                    user.meetingNumber = meetingNo;
+                    user.userName = displayName;
+                    user.userToken = zoomToken;
+                    user.userID = userId;
+                    user.isAppShare = NO;
+                    user.zak = zoomAccessToken;
+                    param = user;
+                }else{
+                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"UserId required when not logged in!"];
                     [self.commandDelegate sendPluginResult:pluginResult callbackId:callbackId];
                     return;
                 }
+                
 
-                MobileRTCMeetingStartParam4WithoutLoginUser * user = [[MobileRTCMeetingStartParam4WithoutLoginUser alloc]init];
-                user.userType = MobileRTCUserType_APIUser;
-                user.meetingNumber = meetingNo;
-                user.userName = displayName;
-                user.userToken = zoomToken;
-                user.userID = userId;
-                user.isAppShare = NO;
-                user.zak = zoomAccessToken;
-                param = user;
             }
             // Start meeting.
             MobileRTCMeetError response = [ms startMeetingWithStartParam:param];
@@ -244,6 +260,161 @@
             }
         }
     });
+}
+-(NSString *)dictionaryToJson:(NSDictionary*)dictionary{
+    NSError *error;
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:dictionary
+                                                  options:(NSJSONWritingOptions) (0)
+                                                    error:&error];
+
+    if (! jsonData) {
+       NSLog(@"%s: error: %@", __func__, error.localizedDescription);
+       return @"{}";
+    } else {
+       return [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+    }
+}
+
+
+-(NSString *)arrayToJson:(NSArray*)array{
+    NSError *error;
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:array
+                                                  options:(NSJSONWritingOptions) (0)
+                                                    error:&error];
+
+    if (! jsonData) {
+       NSLog(@"%s: error: %@", __func__, error.localizedDescription);
+       return @"{}";
+    } else {
+       return [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+    }
+}
+-(NSString *)base64urlEncode:(NSString*)string{
+    NSData *nsdata = [string
+      dataUsingEncoding:NSUTF8StringEncoding];
+
+    // Get NSString from NSData object in Base64
+    NSString *base64Encoded = [nsdata base64EncodedStringWithOptions:0];
+    base64Encoded = [base64Encoded stringByReplacingOccurrencesOfString:@"=" withString:@""];
+    base64Encoded = [base64Encoded stringByReplacingOccurrencesOfString:@"+" withString:@"-"];
+    base64Encoded = [base64Encoded stringByReplacingOccurrencesOfString:@"/" withString:@"_"];
+    return base64Encoded;
+}
+
+-(NSString*) hmac:(NSString*)data withKey:(NSString*)key{
+
+    const char *cKey  = [key cStringUsingEncoding:NSASCIIStringEncoding];
+    const char *cData = [data cStringUsingEncoding:NSASCIIStringEncoding];
+
+    unsigned char cHMAC[CC_SHA256_DIGEST_LENGTH];
+    
+    CCHmac(kCCHmacAlgSHA256, cKey, strlen(cKey), cData, strlen(cData), cHMAC);
+
+    NSData *HMAC = [[NSData alloc] initWithBytes:cHMAC
+                                          length:sizeof(cHMAC)];
+
+    NSString *hash = [HMAC base64EncodedStringWithOptions:0];
+    hash = [hash stringByReplacingOccurrencesOfString:@"=" withString:@""];
+    hash = [hash stringByReplacingOccurrencesOfString:@"+" withString:@"-"];
+    hash = [hash stringByReplacingOccurrencesOfString:@"/" withString:@"_"];
+    return hash;
+}
+
+- (NSString*)createJWTAccessToken
+{
+  NSMutableDictionary * dictHeader = [NSMutableDictionary dictionary];
+  [dictHeader setValue:@"HS256" forKey:@"alg"];
+  [dictHeader setValue:@"JWT" forKey:@"typ"];
+  NSString * base64Header = [self base64urlEncode:[self dictionaryToJson:dictHeader]];
+
+  //    {
+  //        "iss": "API_KEY",
+  //        "exp": 1496091964000
+  //    }
+  NSInteger timeInSeconds = [[NSDate date] timeIntervalSince1970];
+  NSInteger time = timeInSeconds + 1000;//1h
+  NSMutableDictionary * dictPayload = [NSMutableDictionary dictionary];
+  [dictPayload setValue:apiKey forKey:@"iss"];
+    [dictPayload setValue:[NSNumber numberWithLong:time] forKey:@"exp"];
+  NSString * base64Payload = [self base64urlEncode:[self dictionaryToJson:dictPayload]];
+
+  NSString * composer = [NSString stringWithFormat:@"%@.%@",base64Header,base64Payload];
+  NSString * hashmac = [self hmac:composer withKey:apiSecret];
+
+  NSString * accesstoken = [NSString stringWithFormat:@"%@.%@.%@",base64Header,base64Payload,hashmac];
+  return accesstoken;
+}
+
+- (NSString*)requestTokenOrZAKForUser:(NSString *)userId withType:(NSString*)type
+{
+    dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+    NSString * bodyString = [NSString stringWithFormat:@"token?type=%@",type];
+    NSString * urlString = [NSString stringWithFormat:@"%@/%@/%@",@"https://api.zoom.us/v2/users",userId,bodyString];
+    urlString = [urlString stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
+    NSLog(@"urlString = %@",urlString);
+    NSMutableURLRequest* mRequest = [self requestUrl:urlString];
+    NSURLSession * session = [NSURLSession sharedSession];
+    __block NSString* token;
+    [[session dataTaskWithRequest:mRequest
+            completionHandler:^(NSData *data,
+                                NSURLResponse *response,
+                                NSError *error) {
+        
+      if (error != nil) {
+          dispatch_semaphore_signal(sem);
+          return;
+      }
+        NSDictionary *dictionary = [NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingAllowFragments error:nil];
+        
+        token = [dictionary objectForKey:@"token"];
+        dispatch_semaphore_signal(sem);
+        
+    }]resume];
+    dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
+    NSLog(@"try");
+    return token;
+}
+
+- (NSMutableURLRequest*)requestUrl:(NSString *)urlString
+{
+    NSURL *url = [NSURL URLWithString:urlString];
+    NSMutableURLRequest *mRequest = [NSMutableURLRequest requestWithURL:url cachePolicy:NSURLRequestUseProtocolCachePolicy timeoutInterval:60];
+    [mRequest setHTTPMethod:@"GET"];
+    [mRequest setValue:[NSString stringWithFormat:@"Bearer %@",[self createJWTAccessToken]] forHTTPHeaderField:@"Authorization"];
+    return mRequest;
+}
+
+-(void)getUsersId:(CDVInvokedUrlCommand *)command
+{
+        NSMutableURLRequest* mRequest = [self requestUrl:@"https://api.zoom.us/v2/users"];
+    NSURLSession * session = [NSURLSession sharedSession];
+    [[session dataTaskWithRequest:mRequest
+            completionHandler:^(NSData *data,
+                                NSURLResponse *response,
+                                NSError *error) {
+      if (error != nil) {
+          return;
+      }
+      NSDictionary *dictionary = [NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingAllowFragments error:nil];
+        if ([[dictionary objectForKey:@"message"]  isEqual: @"Invalid access token."]) {
+            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"There was an error creating the access token!"];
+            [self.commandDelegate sendPluginResult:pluginResult callbackId:callbackId];
+            return;
+        }
+        NSMutableArray* users = [[NSMutableArray alloc] init];
+        for (NSDictionary* user in [dictionary objectForKey:@"users"]) {
+            NSMutableDictionary* myuser = [[NSMutableDictionary alloc] init];;
+            [myuser setValue:[user objectForKey:@"id"] forKey:@"id"];
+            [myuser setValue:[user objectForKey:@"email"] forKey:@"email"];
+            [users addObject:myuser];
+        }
+      
+      pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArray:users];
+      [self.commandDelegate sendPluginResult:pluginResult callbackId:callbackId];
+
+    }] resume];
+        
+    
 }
 
 - (void)setLocale:(CDVInvokedUrlCommand *)command
