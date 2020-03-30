@@ -414,6 +414,10 @@
 
     }] resume];
         
+    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_NO_RESULT];
+
+    pluginResult.keepCallback = [NSNumber numberWithBool:YES];
+    [self.commandDelegate sendPluginResult:pluginResult callbackId:callbackId];
     
 }
 
