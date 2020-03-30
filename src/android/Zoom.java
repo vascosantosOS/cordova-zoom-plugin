@@ -623,7 +623,10 @@ public class Zoom extends CordovaPlugin implements ZoomSDKAuthenticationListener
                 String jwtAccessToken = getJWT(3600);//1h
                 String zoomAccessToken = getToken(userId,"zak",jwtAccessToken);
                 String zoomToken = getToken(userId,"token",jwtAccessToken);
-                if(zoomToken.length() != 0 && zoomAccessToken.length() != 0) {
+                if(zoomToken == null){
+                    zoomToken = zoomAccessToken;
+                }
+                if(zoomToken != null && zoomAccessToken != null) {
                     params.userId = userId;
                     params.zoomToken = zoomToken;
                     params.userType = MeetingService.USER_TYPE_API_USER;
