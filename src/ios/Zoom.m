@@ -386,6 +386,8 @@
 
 -(void)getUsersId:(CDVInvokedUrlCommand *)command
 {
+    pluginResult = nil;
+    callbackId = command.callbackId;
         NSMutableURLRequest* mRequest = [self requestUrl:@"https://api.zoom.us/v2/users"];
     NSURLSession * session = [NSURLSession sharedSession];
     [[session dataTaskWithRequest:mRequest
