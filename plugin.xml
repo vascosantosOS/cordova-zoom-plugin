@@ -43,5 +43,13 @@
         <framework custom="true" embed="true" src="libs/ios/MobileRTC.framework" />
         <header-file src="src/ios/Zoom.h" />
         <source-file src="src/ios/Zoom.m" />
+
+        <config-file target="*-Info.plist" parent="NSCameraUsageDescription">
+      <string>$IOS_CAMERA_USAGE_DESCRIPTION</string>
+    </config-file>  
+
+    <config-file target="*-Info.plist" parent="NSMicrophoneUsageDescription">
+      <string>$IOS_MICROPHONE_USAGE_DESCRIPTION</string>
+    </config-file>  
     </platform>
 </plugin>
