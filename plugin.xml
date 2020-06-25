@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
-<plugin id="cordova.plugin.zoom" version="4.4.55130.0712" xmlns="http://apache.org/cordova/ns/plugins/1.0" xmlns:android="http://schemas.android.com/apk/res/android">
+<plugin id="cordova.plugin.zoom" version="4.6.21666.0603" xmlns="http://apache.org/cordova/ns/plugins/1.0" xmlns:android="http://schemas.android.com/apk/res/android">
     <name>Zoom</name>
     <js-module name="Zoom" src="www/Zoom.js">
         <clobbers target="cordova.plugins.Zoom" />
@@ -26,6 +26,7 @@
             <uses-permission android:name="android.permission.CALL_PHONE" />
             <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
         </config-file>
+        <dependency id="cordova-androidx-build" url="https://github.com/cmfsotelo/cordova-androidx-build.git#1.0-OS.1" />
         <source-file framework="true" src="libs/android/commonlib.aar" target-dir="libs/android" />
         <source-file framework="true" src="libs/android/mobilertc.aar" target-dir="libs/android" />
         <source-file framework="true" src="src/android/AuthThread.java" target-dir="src/cordova/plugin/zoom" />
