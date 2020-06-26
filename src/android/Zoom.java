@@ -183,6 +183,7 @@ public class Zoom extends CordovaPlugin implements ZoomSDKAuthenticationListener
 
         // If the SDK has been successfully initialized, simply return.
         if (mZoomSDK.isInitialized()) {
+            callbackContext.error("Zoom already initialized!");
             return;
         }
 
